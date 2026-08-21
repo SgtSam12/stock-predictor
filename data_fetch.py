@@ -20,24 +20,24 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 def fetch_from_bdshare(ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
     """
     Fetch historical data for a single ticker via bdshare.
-
-    ticker: DSE trading code, e.g. 'GP', 'SQURPHARMA', 'BEXIMCO'
-    start_date, end_date: 'YYYY-MM-DD'
     """
     from bdshare import get_hist_data
 
-    df = get_hist_data(start_date, end_date, ticker)
+    try:
+        df = get_hist_data(start_date, end_date, ticker)
+    except Exception as e:
+        raise ValueError(f"bdshare library error for {ticker}: {e}")
 
-    if df is None or df.empty:
+    # Check if df is empty, None, or not a DataFrame
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         raise ValueError(
-            f"No data returned for {ticker}. Check the ticker code and date range."
+            f"DSE returned no data for {ticker}. The website structure may have changed or the ticker is invalid."
         )
 
     df = _normalize_columns(df)
     cache_path = os.path.join(CACHE_DIR, f"{ticker}.csv")
     df.to_csv(cache_path, index=False)
     return df
-
 
 def load_from_csv(path: str) -> pd.DataFrame:
     """
