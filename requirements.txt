@@ -1,0 +1,15 @@
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+feedparser==6.0.14
+requests
+pandas
+numpy
+scikit-learn
+bdshare
+
+# Local sentiment model (no external AI API) — CPU-only torch to keep
+# install size manageable on free-tier hosting. This extra index is what
+# gives you the small CPU wheel instead of the multi-GB CUDA build.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+transformers
