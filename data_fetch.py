@@ -19,12 +19,12 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 def fetch_from_bdshare(ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
     """
-    Directly fetch historical data from DSE archive bypassing library IP blocks.
+    Directly fetch historical data from DSE archive with SSL verification bypassed.
     """
     import requests
-    from io import StringIO
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-    # Format ticker and request headers to mimic a real browser
     url = f"https://www.dsebd.org/multichart_ft_new.php?symb={ticker}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -32,18 +32,15 @@ def fetch_from_bdshare(ticker: str, start_date: str, end_date: str) -> pd.DataFr
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=15)
+        # verify=False bypasses the local issuer certificate SSL error
+        response = requests.get(url, headers=headers, verify=False, timeout=15)
         if response.status_code != 200 or not response.text:
             raise ValueError(f"DSE server returned status {response.status_code}")
         
-        # Parse the JSON response from DSE's multi-chart endpoint
-        import json
         data = response.json()
-        
         if not data or "t" not in data:
             raise ValueError("Invalid data format received from DSE.")
             
-        # Convert DSE timestamp arrays into a clean DataFrame
         df = pd.DataFrame({
             "date": pd.to_datetime(data["t"], unit="s"),
             "open": data.get("o", data["c"]),
@@ -62,7 +59,7 @@ def fetch_from_bdshare(ticker: str, start_date: str, end_date: str) -> pd.DataFr
     cache_path = os.path.join(CACHE_DIR, f"{ticker}.csv")
     df.to_csv(cache_path, index=False)
     return df
-
+    
 def load_from_csv(path: str) -> pd.DataFrame:
     """
     Load OHLCV data from a local CSV. Expects columns that can be mapped to
