@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DSE Signal — AI Stock Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0B1220;
+    --panel:#121A2E;
+    --panel-border:#1F2A44;
+    --text:#E8ECF4;
+    --muted:#7C8AA5;
+    --up:#3DDC84;
+    --down:#FF5C5C;
+    --amber:#FFB020;
+    --mono:'JetBrains Mono', monospace;
+    --display:'Space Grotesk', sans-serif;
+    --body:'Inter', sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--text); font-family:var(--body);
+    min-height:100vh; padding:24px 16px 80px;
+  }
+  .wrap{max-width:900px; margin:0 auto;}
+
+  /* Header / ticker strip */
+  header{margin-bottom:28px;}
+  .brand{
+    font-family:var(--display); font-weight:700; font-size:1.6rem;
+    letter-spacing:-0.02em; display:flex; align-items:center; gap:10px;
+  }
+  .brand .dot{width:9px; height:9px; border-radius:50%; background:var(--up); box-shadow:0 0 8px var(--up);}
+  .brand-sub{color:var(--muted); font-size:0.85rem; margin-top:2px; font-family:var(--mono);}
+
+  .ticker-strip{
+    margin-top:18px; overflow:hidden; white-space:nowrap; border-top:1px solid var(--panel-border);
+    border-bottom:1px solid var(--panel-border); padding:8px 0;
+  }
+  .ticker-strip span{font-family:var(--mono); font-size:0.78rem; color:var(--muted); margin-right:28px;}
+
+  /* Search */
+  .search-row{display:flex; gap:8px; margin:24px 0;}
+  input[type="text"]{
+    flex:1; background:var(--panel); border:1px solid var(--panel-border); color:var(--text);
+    font-family:var(--mono); font-size:0.95rem; padding:12px 14px; border-radius:6px; outline:none;
+  }
+  input[type="text"]:focus{border-color:var(--amber);}
+  input[type="text"]::placeholder{color:var(--muted);}
+  button{
+    background:var(--amber); color:#1a1200; border:none; font-family:var(--display); font-weight:700;
+    padding:0 22px; border-radius:6px; cursor:pointer; font-size:0.9rem; letter-spacing:0.02em;
+  }
+  button:disabled{opacity:0.5; cursor:wait;}
+  button:hover:not(:disabled){filter:brightness(1.08);}
+  .options-row{display:flex; gap:16px; margin-bottom:8px; font-family:var(--mono); font-size:0.78rem; color:var(--muted);}
+  .options-row label{display:flex; align-items:center; gap:5px; cursor:pointer;}
+
+  /* Status */
+  #status{font-family:var(--mono); font-size:0.85rem; color:var(--muted); min-height:20px; margin-bottom:16px;}
+  #status.err{color:var(--down);}
+
+  /* Hero prediction card */
+  .hero{
+    background:linear-gradient(155deg, var(--panel) 0%, #0E1526 100%);
+    border:1px solid var(--panel-border); border-radius:12px; padding:28px; margin-bottom:20px;
+    display:none;
+  }
+  .hero.show{display:block;}
+  .hero-top{display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;}
+  .hero-ticker{font-family:var(--display); font-weight:700; font-size:1.3rem;}
+  .hero-company{color:var(--muted); font-size:0.85rem; margin-top:2px;}
+  .direction-badge{
+    font-family:var(--mono); font-weight:700; font-size:1.1rem; padding:6px 16px; border-radius:20px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .direction-badge.up{color:var(--up); background:rgba(61,220,132,0.12); border:1px solid rgba(61,220,132,0.3);}
+  .direction-badge.down{color:var(--down); background:rgba(255,92,92,0.12); border:1px solid rgba(255,92,92,0.3);}
+
+  .price-row{display:flex; gap:36px; margin-top:22px; flex-wrap:wrap;}
+  .price-block .label{font-family:var(--mono); font-size:0.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em;}
+  .price-block .value{font-family:var(--mono); font-size:1.7rem; font-weight:700; margin-top:2px;}
+  .price-block .value.pos{color:var(--up);}
+  .price-block .value.neg{color:var(--down);}
+
+  .confidence-bar-wrap{margin-top:20px;}
+  .confidence-bar-wrap .label{font-family:var(--mono); font-size:0.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;}
+  .confidence-bar{height:8px; background:#1a2338; border-radius:4px; overflow:hidden;}
+  .confidence-fill{height:100%; background:var(--amber); border-radius:4px; transition:width 0.6s ease;}
+
+  .warn-box{
+    margin-top:18px; padding:10px 14px; background:rgba(255,176,32,0.08); border:1px solid rgba(255,176,32,0.25);
+    border-radius:6px; font-size:0.8rem; color:var(--amber); font-family:var(--mono);
+  }
+
+  /* Panels */
+  .panel{background:var(--panel); border:1px solid var(--panel-border); border-radius:12px; padding:22px; margin-bottom:20px; display:none;}
+  .panel.show{display:block;}
+  .panel h2{font-family:var(--display); font-size:1rem; margin-bottom:14px; display:flex; align-items:center; gap:8px;}
+  .panel h2::before{content:''; width:3px; height:16px; background:var(--amber); display:inline-block; border-radius:2px;}
+
+  .signal-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:12px;}
+  .signal-item{background:#0E1526; border-radius:8px; padding:12px 14px; border:1px solid var(--panel-border);}
+  .signal-item .k{font-family:var(--mono); font-size:0.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;}
+  .signal-item .v{font-size:0.88rem; margin-top:4px; line-height:1.3;}
+
+  canvas{max-width:100%;}
+
+  .news-item{padding:12px 0; border-bottom:1px solid var(--panel-border);}
+  .news-item:last-child{border-bottom:none;}
+  .news-title{font-size:0.9rem; line-height:1.4; margin-bottom:4px;}
+  .news-title a{color:var(--text); text-decoration:none;}
+  .news-title a:hover{color:var(--amber);}
+  .news-meta{display:flex; gap:10px; align-items:center; font-family:var(--mono); font-size:0.72rem; color:var(--muted);}
+  .sent-tag{padding:2px 8px; border-radius:10px; font-weight:700;}
+  .sent-tag.pos{color:var(--up); background:rgba(61,220,132,0.1);}
+  .sent-tag.neg{color:var(--down); background:rgba(255,92,92,0.1);}
+  .sent-tag.neu{color:var(--muted); background:rgba(124,138,165,0.1);}
+  .news-summary{color:var(--muted); font-size:0.82rem; margin-top:5px;}
+
+  .overall-sentiment{
+    display:flex; align-items:center; gap:14px; margin-bottom:16px; padding:14px; background:#0E1526;
+    border-radius:8px; border:1px solid var(--panel-border);
+  }
+  .overall-sentiment .score{font-family:var(--mono); font-size:1.5rem; font-weight:700;}
+  .overall-sentiment .desc{color:var(--muted); font-size:0.85rem; line-height:1.4;}
+
+  footer{text-align:center; color:var(--muted); font-family:var(--mono); font-size:0.72rem; margin-top:30px; line-height:1.6;}
+
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand"><span class="dot"></span>DSE SIGNAL</div>
+    <div class="brand-sub">AI-assisted price & sentiment terminal — Dhaka Stock Exchange</div>
+    <div class="ticker-strip" id="tickerStrip">
+      <span>Loading terminal…</span>
+    </div>
+  </header>
+
+  <div class="search-row">
+    <input type="text" id="tickerInput" placeholder="DSE ticker, e.g. GP, SQURPHARMA, BEXIMCO" value="GP">
+    <button id="goBtn" onclick="runPrediction()">Analyze</button>
+  </div>
+  <div class="options-row">
+    <label><input type="checkbox" id="demoMode" checked> Demo mode (synthetic data, no backend needed for testing)</label>
+    <label><input type="checkbox" id="skipNews"> Skip news/sentiment (faster)</label>
+  </div>
+  <div id="status"></div>
+
+  <!-- Hero prediction -->
+  <div class="hero" id="heroCard">
+    <div class="hero-top">
+      <div>
+        <div class="hero-ticker" id="heroTicker">—</div>
+        <div class="hero-company" id="heroCompany">—</div>
+      </div>
+      <div class="direction-badge" id="directionBadge">—</div>
+    </div>
+    <div class="price-row">
+      <div class="price-block">
+        <div class="label">Current Price</div>
+        <div class="value" id="currentPrice">—</div>
+      </div>
+      <div class="price-block">
+        <div class="label">Predicted Next Close</div>
+        <div class="value" id="predictedPrice">—</div>
+      </div>
+      <div class="price-block">
+        <div class="label">Expected Change</div>
+        <div class="value" id="predictedChange">—</div>
+      </div>
+    </div>
+    <div class="confidence-bar-wrap">
+      <div class="label">Model Confidence</div>
+      <div class="confidence-bar"><div class="confidence-fill" id="confidenceFill" style="width:0%"></div></div>
+    </div>
+    <div class="warn-box" id="warnBox" style="display:none;"></div>
+  </div>
+
+  <!-- Technical signals -->
+  <div class="panel" id="signalsPanel">
+    <h2>Technical Signals</h2>
+    <div class="signal-grid" id="signalGrid"></div>
+  </div>
+
+  <!-- Chart -->
+  <div class="panel" id="chartPanel">
+    <h2>Price & Moving Averages</h2>
+    <canvas id="priceChart" height="220"></canvas>
+  </div>
+
+  <!-- News / sentiment -->
+  <div class="panel" id="newsPanel">
+    <h2>News & Sentiment</h2>
+    <div class="overall-sentiment" id="overallSentiment"></div>
+    <div id="newsList"></div>
+  </div>
+
+  <footer>
+    DSE Signal is an educational tool, not financial advice.<br>
+    DSE stocks are thinly traded and news/policy-driven — no model captures every risk.
+  </footer>
+
+</div>
+
+<script>
+// ============================================================
+// CONFIGURE THIS: point at your deployed backend URL
+// ============================================================
+const API_BASE = "http://localhost:8000"; // e.g. "https://your-app.onrender.com"
+
+let chartInstance = null;
+
+const tickerMsgs = [
+  "SMA · EMA · RSI · MACD · Bollinger",
+  "Quant signals + AI news scoring",
+  "Random Forest — direction & price",
+  "Built for Dhaka Stock Exchange"
+];
+document.getElementById('tickerStrip').innerHTML =
+  tickerMsgs.map(m => `<span>${m}</span>`).join('') + tickerMsgs.map(m => `<span>${m}</span>`).join('');
+
+function setStatus(msg, isErr=false){
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = isErr ? 'err' : '';
+}
+
+async function runPrediction(){
+  const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
+  if(!ticker){ setStatus('Enter a ticker first.', true); return; }
+
+  const demo = document.getElementById('demoMode').checked;
+  const skipNews = document.getElementById('skipNews').checked;
+  const btn = document.getElementById('goBtn');
+
+  btn.disabled = true;
+  setStatus(`Fetching data & running model for ${ticker}...`);
+  document.getElementById('heroCard').classList.remove('show');
+  document.getElementById('signalsPanel').classList.remove('show');
+  document.getElementById('chartPanel').classList.remove('show');
+  document.getElementById('newsPanel').classList.remove('show');
+
+  try{
+    const url = `${API_BASE}/api/predict/${encodeURIComponent(ticker)}?demo=${demo}&skip_news=${skipNews}&company_name=${encodeURIComponent(ticker)}`;
+    const res = await fetch(url);
+    if(!res.ok){
+      const errBody = await res.json().catch(()=>({detail: res.statusText}));
+      throw new Error(errBody.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    renderPrediction(data);
+    setStatus(`Done. Data range: ${data.data_range.start} → ${data.data_range.end} (${data.n_trading_days} trading days).`);
+
+    // Chart is a nice-to-have — don't let a CDN hiccup mask a successful prediction.
+    try{
+      const histUrl = `${API_BASE}/api/history/${encodeURIComponent(ticker)}?demo=${demo}`;
+      const histRes = await fetch(histUrl);
+      const histData = await histRes.json();
+      renderChart(histData);
+    }catch(chartErr){
+      console.error('Chart render failed:', chartErr);
+      document.getElementById('chartPanel').classList.remove('show');
+    }
+  }catch(e){
+    setStatus(`Failed: ${e.message}. If your backend isn't deployed/running yet, check "Demo mode" and try again.`, true);
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function renderPrediction(data){
+  document.getElementById('heroTicker').textContent = data.ticker;
+  document.getElementById('heroCompany').textContent = data.company_name;
+
+  const badge = document.getElementById('directionBadge');
+  const up = data.prediction.predicted_direction === 'UP';
+  badge.textContent = up ? '▲ UP' : '▼ DOWN';
+  badge.className = 'direction-badge ' + (up ? 'up' : 'down');
+
+  document.getElementById('currentPrice').textContent = data.prediction.current_price.toFixed(2) + ' ৳';
+  document.getElementById('predictedPrice').textContent = data.prediction.predicted_next_price.toFixed(2) + ' ৳';
+
+  const chg = data.prediction.predicted_change_pct;
+  const chgEl = document.getElementById('predictedChange');
+  chgEl.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+  chgEl.className = 'value ' + (chg >= 0 ? 'pos' : 'neg');
+
+  document.getElementById('confidenceFill').style.width = (data.prediction.confidence * 100).toFixed(0) + '%';
+
+  const warnBox = document.getElementById('warnBox');
+  if(data.model_metrics.warning){
+    warnBox.style.display = 'block';
+    warnBox.textContent = '⚠ ' + data.model_metrics.warning +
+      ` (model accuracy ${(data.model_metrics.direction.accuracy*100).toFixed(0)}% vs baseline ${(data.model_metrics.direction.baseline_accuracy*100).toFixed(0)}%)`;
+  } else {
+    warnBox.style.display = 'none';
+  }
+
+  document.getElementById('heroCard').classList.add('show');
+
+  // Technical signals
+  const grid = document.getElementById('signalGrid');
+  grid.innerHTML = '';
+  for(const [k,v] of Object.entries(data.technical_signals)){
+    grid.innerHTML += `<div class="signal-item"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  }
+  document.getElementById('signalsPanel').classList.add('show');
+
+  // News
+  renderNews(data.news);
+}
+
+function renderNews(news){
+  const overall = document.getElementById('overallSentiment');
+  const score = news.overall_sentiment_score || 0;
+  const scoreColor = score > 0.15 ? 'var(--up)' : score < -0.15 ? 'var(--down)' : 'var(--muted)';
+  overall.innerHTML = `
+    <div class="score" style="color:${scoreColor}">${score >= 0 ? '+' : ''}${score.toFixed(2)}</div>
+    <div class="desc">${news.overall_summary || 'No summary.'}</div>
+  `;
+
+  const list = document.getElementById('newsList');
+  list.innerHTML = '';
+  if(!news.articles || news.articles.length === 0){
+    list.innerHTML = '<div style="color:var(--muted); font-size:0.85rem;">No scored articles for this run.</div>';
+  } else {
+    news.articles.forEach(a => {
+      const s = a.sentiment_score || 0;
+      const tagClass = s > 0.15 ? 'pos' : s < -0.15 ? 'neg' : 'neu';
+      list.innerHTML += `
+        <div class="news-item">
+          <div class="news-title"><a href="${a.link || '#'}" target="_blank">${a.title || 'Untitled'}</a></div>
+          <div class="news-meta">
+            <span class="sent-tag ${tagClass}">${s >= 0 ? '+' : ''}${s.toFixed(2)}</span>
+            <span>${a.relevance || ''}</span>
+            <span>${a.source || ''}</span>
+          </div>
+          ${a.reason ? `<div class="news-summary">${a.reason}</div>` : ''}
+        </div>
+      `;
+    });
+  }
+  document.getElementById('newsPanel').classList.add('show');
+}
+
+function renderChart(histData){
+  const rows = histData.rows.filter(r => r.close);
+  const labels = rows.map(r => r.date);
+  const close = rows.map(r => r.close);
+  const sma20 = rows.map(r => r.sma_20 === '' ? null : r.sma_20);
+  const sma50 = rows.map(r => r.sma_50 === '' ? null : r.sma_50);
+
+  document.getElementById('chartPanel').classList.add('show');
+  if(chartInstance) chartInstance.destroy();
+  const ctx = document.getElementById('priceChart').getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label:'Close', data:close, borderColor:'#E8ECF4', borderWidth:1.5, pointRadius:0, tension:0.1 },
+        { label:'SMA 20', data:sma20, borderColor:'#FFB020', borderWidth:1, pointRadius:0, tension:0.1 },
+        { label:'SMA 50', data:sma50, borderColor:'#3DDC84', borderWidth:1, pointRadius:0, tension:0.1 },
+      ]
+    },
+    options: {
+      responsive:true,
+      interaction:{mode:'index', intersect:false},
+      scales:{
+        x:{ ticks:{color:'#7C8AA5', maxTicksLimit:8, font:{family:'JetBrains Mono', size:10}}, grid:{color:'#1F2A44'} },
+        y:{ ticks:{color:'#7C8AA5', font:{family:'JetBrains Mono', size:10}}, grid:{color:'#1F2A44'} }
+      },
+      plugins:{
+        legend:{ labels:{color:'#E8ECF4', font:{family:'Inter', size:11}} }
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>
