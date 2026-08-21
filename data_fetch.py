@@ -19,20 +19,44 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 def fetch_from_bdshare(ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
     """
-    Fetch historical data for a single ticker via bdshare using the correct API function.
+    Directly fetch historical data from DSE archive bypassing library IP blocks.
     """
-    from bdshare import get_historical_data
+    import requests
+    from io import StringIO
+
+    # Format ticker and request headers to mimic a real browser
+    url = f"https://www.dsebd.org/multichart_ft_new.php?symb={ticker}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://www.dsebd.org/"
+    }
 
     try:
-        # Correct bdshare function order: symbol, start_date, end_date
-        df = get_historical_data(ticker, start_date, end_date)
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code != 200 or not response.text:
+            raise ValueError(f"DSE server returned status {response.status_code}")
+        
+        # Parse the JSON response from DSE's multi-chart endpoint
+        import json
+        data = response.json()
+        
+        if not data or "t" not in data:
+            raise ValueError("Invalid data format received from DSE.")
+            
+        # Convert DSE timestamp arrays into a clean DataFrame
+        df = pd.DataFrame({
+            "date": pd.to_datetime(data["t"], unit="s"),
+            "open": data.get("o", data["c"]),
+            "high": data.get("h", data["c"]),
+            "low": data.get("l", data["c"]),
+            "close": data["c"],
+            "volume": data.get("v", 0)
+        })
     except Exception as e:
-        raise ValueError(f"bdshare library error for {ticker}: {e}")
+        raise ValueError(f"Failed to fetch live data for {ticker}: {e}")
 
-    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
-        raise ValueError(
-            f"No live data returned for {ticker} from DSE. Check the ticker code."
-        )
+    if df.empty:
+        raise ValueError(f"No live data found for {ticker}.")
 
     df = _normalize_columns(df)
     cache_path = os.path.join(CACHE_DIR, f"{ticker}.csv")
