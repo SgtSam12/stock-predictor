@@ -19,47 +19,47 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 def fetch_from_bdshare(ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
     """
-    Directly fetch historical data from DSE archive with SSL verification bypassed.
+    Fetch historical data from DSE using pandas read_html on their public archive.
     """
     import requests
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-    url = f"https://www.dsebd.org/multichart_ft_new.php?symb={ticker}"
+    # DSE official historical share price web form endpoint
+    url = f"https://www.dsebd.org/day_end_archive.php?startDate={start_date}&endDate={end_date}&archive=history&historical=history&symb={ticker}"
+    
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer": "https://www.dsebd.org/"
     }
 
     try:
-        # verify=False bypasses the local issuer certificate SSL error
-        response = requests.get(url, headers=headers, verify=False, timeout=15)
-        if response.status_code != 200 or not response.text:
-            raise ValueError(f"DSE server returned status {response.status_code}")
+        # Use pandas to directly parse HTML tables returned by DSE
+        dfs = pd.read_html(url, storage_options={"User-Agent": headers["User-Agent"]})
+        if not dfs:
+            raise ValueError("No tables found on DSE archive page.")
         
-        data = response.json()
-        if not data or "t" not in data:
-            raise ValueError("Invalid data format received from DSE.")
+        # Find the correct table containing the stock history
+        df = None
+        for table in dfs:
+            if any(col in str(table.columns).lower() for col in ['ltp', 'close', 'open', 'high', 'low']):
+                df = table
+                break
+        
+        if df is None or df.empty:
+            df = dfs[0] # Fallback to first table
             
-        df = pd.DataFrame({
-            "date": pd.to_datetime(data["t"], unit="s"),
-            "open": data.get("o", data["c"]),
-            "high": data.get("h", data["c"]),
-            "low": data.get("l", data["c"]),
-            "close": data["c"],
-            "volume": data.get("v", 0)
-        })
     except Exception as e:
-        raise ValueError(f"Failed to fetch live data for {ticker}: {e}")
+        raise ValueError(f"Failed to fetch DSE archive for {ticker}: {e}")
 
-    if df.empty:
+    if df is None or df.empty:
         raise ValueError(f"No live data found for {ticker}.")
 
     df = _normalize_columns(df)
     cache_path = os.path.join(CACHE_DIR, f"{ticker}.csv")
     df.to_csv(cache_path, index=False)
     return df
-    
+
 def load_from_csv(path: str) -> pd.DataFrame:
     """
     Load OHLCV data from a local CSV. Expects columns that can be mapped to
