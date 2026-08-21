@@ -87,9 +87,13 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date").reset_index(drop=True)
 
+    # Ensure all required numeric columns are flattened and converted properly
     for col in ["open", "high", "low", "close", "volume"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
+        if col in df.columns:
+            # If a column accidentally became a DataFrame or multi-dim series, grab its first column
+            if isinstance(df[col], pd.DataFrame):
+                df[col] = df[col].iloc[:, 0]
+            df[col] = pd.to_numeric(df[col], errors="coerce")
     df = df.dropna(subset=["close"]).reset_index(drop=True)
     return df
     """Standardize column names to: date, open, high, low, close, volume."""
