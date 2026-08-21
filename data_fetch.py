@@ -51,6 +51,48 @@ def load_from_csv(path: str) -> pd.DataFrame:
 
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Standardize column names to: date, open, high, low, close, volume."""
+    # bdshare sometimes stores the date as the index instead of a column.
+    # This brings the index back into the columns so we can use it.
+    if df.index.name and "date" in df.index.name.lower():
+        df = df.reset_index()
+    elif "date" not in [str(c).strip().lower() for c in df.columns]:
+        df = df.reset_index()
+
+    rename_map = {}
+    for col in df.columns:
+        c = str(col).strip().lower()
+        if c in ("date", "trading_date", "trade_date", "index", "level_0"):
+            rename_map[col] = "date"
+        elif c in ("open", "openp"):
+            rename_map[col] = "open"
+        elif c in ("high",):
+            rename_map[col] = "high"
+        elif c in ("low",):
+            rename_map[col] = "low"
+        elif c in ("close", "closep", "ltp"):
+            rename_map[col] = "close"
+        elif c in ("volume", "vol", "trade"):
+            rename_map[col] = "volume"
+
+    df = df.rename(columns=rename_map)
+
+    required = ["date", "open", "high", "low", "close"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns after normalization: {missing}. Found columns: {list(df.columns)}")
+
+    if "volume" not in df.columns:
+        df["volume"] = 0
+
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date").reset_index(drop=True)
+
+    for col in ["open", "high", "low", "close", "volume"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df = df.dropna(subset=["close"]).reset_index(drop=True)
+    return df
+    """Standardize column names to: date, open, high, low, close, volume."""
     rename_map = {}
     for col in df.columns:
         c = col.strip().lower()
