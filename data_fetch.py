@@ -19,19 +19,19 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 def fetch_from_bdshare(ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
     """
-    Fetch historical data for a single ticker via bdshare.
+    Fetch historical data for a single ticker via bdshare using the correct API function.
     """
-    from bdshare import get_hist_data
+    from bdshare import get_historical_data
 
     try:
-        df = get_hist_data(start_date, end_date, ticker)
+        # Correct bdshare function order: symbol, start_date, end_date
+        df = get_historical_data(ticker, start_date, end_date)
     except Exception as e:
         raise ValueError(f"bdshare library error for {ticker}: {e}")
 
-    # Check if df is empty, None, or not a DataFrame
     if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         raise ValueError(
-            f"DSE returned no data for {ticker}. The website structure may have changed or the ticker is invalid."
+            f"No live data returned for {ticker} from DSE. Check the ticker code."
         )
 
     df = _normalize_columns(df)
