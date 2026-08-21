@@ -90,62 +90,67 @@ def predict(
     demo: bool = Query(default=False),
     skip_news: bool = Query(default=False, description="Skip news/sentiment step (faster, quant-only prediction)"),
 ):
-    start = start or str(date.today() - timedelta(days=365 * 3))
-    end = end or str(date.today())
-    company_name = company_name or ticker
+    try:
+        start = start or str(date.today() - timedelta(days=365 * 3))
+        end = end or str(date.today())
+        company_name = company_name or ticker
 
-    # 1. Price data + technical indicators
-    df = _get_price_data(ticker, start, end, demo)
-    df_ind = indicators.compute_all_indicators(df)
-    signals = indicators.latest_signal_summary(df_ind)
+        # 1. Price data + technical indicators
+        df = _get_price_data(ticker, start, end, demo)
+        df_ind = indicators.compute_all_indicators(df)
+        signals = indicators.latest_signal_summary(df_ind)
 
-    # 2. News + sentiment (qualitative layer)
-    news_result = {"overall_sentiment_score": 0.0, "overall_summary": "Skipped.", "articles": []}
-    if not skip_news:
-        try:
-            articles = news_fetch.fetch_company_news(company_name, ticker)
-            news_result = sentiment.score_news_sentiment(company_name, ticker, articles)
-        except Exception as e:
-            news_result = {
-                "overall_sentiment_score": 0.0,
-                "overall_summary": f"News/sentiment step failed, continuing with quant-only prediction: {e}",
-                "articles": [],
-            }
+        # 2. News + sentiment (qualitative layer)
+        news_result = {"overall_sentiment_score": 0.0, "overall_summary": "Skipped.", "articles": []}
+        if not skip_news:
+            try:
+                articles = news_fetch.fetch_company_news(company_name, ticker)
+                news_result = sentiment.score_news_sentiment(company_name, ticker, articles)
+            except Exception as e:
+                news_result = {
+                    "overall_sentiment_score": 0.0,
+                    "overall_summary": f"News/sentiment step failed, continuing with quant-only prediction: {e}",
+                    "articles": [],
+                }
 
-    # 3. Train models + predict
-    feat_data = predictor.build_features(df_ind, horizon=1)
-    if len(feat_data) < 60:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Only {len(feat_data)} usable rows of data — need at least ~100 for a meaningful model. "
-                   f"Try a wider date range.",
-        )
+        # 3. Train models + predict
+        feat_data = predictor.build_features(df_ind, horizon=1)
+        if len(feat_data) < 60:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Only {len(feat_data)} usable rows of data — need at least ~100 for a meaningful model. "
+                       f"Try a wider date range.",
+            )
 
-    dir_model, dir_metrics, feat_importance = predictor.train_direction_classifier(feat_data)
-    price_model, price_metrics = predictor.train_price_regressor(feat_data)
+        dir_model, dir_metrics, feat_importance = predictor.train_direction_classifier(feat_data)
+        price_model, price_metrics = predictor.train_price_regressor(feat_data)
 
-    live_sentiment = news_result.get("overall_sentiment_score", 0.0)
-    pred = predictor.predict_latest(dir_model, price_model, df_ind, live_sentiment_score=live_sentiment)
+        live_sentiment = news_result.get("overall_sentiment_score", 0.0)
+        pred = predictor.predict_latest(dir_model, price_model, df_ind, live_sentiment_score=live_sentiment)
 
-    return {
-        "ticker": ticker,
-        "company_name": company_name,
-        "data_range": {"start": str(df["date"].min().date()), "end": str(df["date"].max().date())},
-        "n_trading_days": len(df),
-        "technical_signals": signals,
-        "news": news_result,
-        "model_metrics": {
-            "direction": dir_metrics,
-            "price": price_metrics,
-            "warning": (
-                "Model barely beats naive baseline — treat direction prediction with heavy skepticism."
-                if dir_metrics["accuracy"] - dir_metrics["baseline_accuracy"] < 0.03 else None
+        return {
+            "ticker": ticker,
+            "company_name": company_name,
+            "data_range": {"start": str(df["date"].min().date()), "end": str(df["date"].max().date())},
+            "n_trading_days": len(df),
+            "technical_signals": signals,
+            "news": news_result,
+            "model_metrics": {
+                "direction": dir_metrics,
+                "price": price_metrics,
+                "warning": (
+                    "Model barely beats naive baseline — treat direction prediction with heavy skepticism."
+                    if dir_metrics["accuracy"] - dir_metrics["baseline_accuracy"] < 0.03 else None
+                ),
+            },
+            "feature_importance": feat_importance.round(4).to_dict(),
+            "prediction": pred,
+            "disclaimer": (
+                "Educational/statistical tool, not financial advice. DSE stocks are "
+                "thinly traded and news/policy-driven; no model captures every risk."
             ),
-        },
-        "feature_importance": feat_importance.round(4).to_dict(),
-        "prediction": pred,
-        "disclaimer": (
-            "Educational/statistical tool, not financial advice. DSE stocks are "
-            "thinly traded and news/policy-driven; no model captures every risk."
-        ),
-    }
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
